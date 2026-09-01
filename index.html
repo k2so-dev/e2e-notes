@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b0d10'/%3E%3Cpath d='M5 7V5.5a3 3 0 0 1 6 0V7h.5v5h-7V7z' fill='none' stroke='%234ade80' stroke-width='1.2'/%3E%3C/svg%3E" />
+    <title>E2E Notes</title>
+  </head>
+  <body class="h-full">
+    <div x-data="app" x-cloak class="mx-auto flex min-h-full max-w-2xl flex-col gap-6 px-4 py-10">
+      <header class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-lg font-semibold text-neutral-100">E2E Notes</h1>
+          <p class="text-xs text-neutral-500">X25519 + ML-KEM-768 &middot; AES-256-GCM &middot; authenticated &middot; keys never leave this tab</p>
+        </div>
+        <button class="btn shrink-0" x-show="ready" @click="saveOffline()">Save offline copy</button>
+      </header>
+
+      <template x-if="blocked">
+        <p class="rounded-md border border-red-900 bg-red-950/40 p-4 text-sm text-red-300" x-text="blocked"></p>
+      </template>
+
+      <template x-if="ready">
+        <div class="flex flex-col gap-6">
+          <section class="rounded-lg border border-line bg-panel p-4">
+            <div class="flex items-baseline justify-between gap-3">
+              <span class="label mb-0">Your identity</span>
+              <span class="text-xs text-neutral-600" x-text="identity ? 'in memory' : 'none'"></span>
+            </div>
+
+            <template x-if="identity">
+              <div class="mt-3">
+                <div class="flex items-center justify-between">
+                  <span class="label">Public key &mdash; share it</span>
+                  <button class="text-xs text-neutral-500 hover:text-neutral-200" @click="copy(publicKey, 'public')"
+                    x-text="copyLabel('public')"></button>
+                </div>
+                <textarea id="output-public" aria-label="Public key" class="field h-24 resize-y break-all font-mono text-xs" readonly
+                  :value="publicKey" autocomplete="off" spellcheck="false" data-gramm="false"></textarea>
+                <p class="mt-2 text-xs text-neutral-500">
+                  Fingerprint <span class="font-mono text-neutral-300" x-text="identity.fingerprint"></span> &mdash; verify it over a trusted channel
+                </p>
+              </div>
+            </template>
+
+            <div class="mt-3">
+              <label class="label" for="passphrase">Export passphrase &mdash; optional</label>
+              <input id="passphrase" type="password" class="field" x-model="passphrase" placeholder="encrypts the exported file"
+                autocomplete="new-password" spellcheck="false" data-gramm="false" />
+            </div>
+
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button class="btn" @click="confirm('generate')"
+                x-text="!identity ? 'Generate' : confirming === 'generate' ? 'Discard key?' : 'Regenerate'"></button>
+              <button class="btn" @click="$refs.file.click()">Import</button>
+              <button class="btn" @click="exportKey()" :disabled="!identity">Export</button>
+              <button class="btn" @click="confirm('clear')" :disabled="!identity"
+                x-text="confirming === 'clear' ? 'Discard key?' : 'Clear'"></button>
+            </div>
+
+            <input type="file" accept="application/json,.json" class="hidden" x-ref="file" @change="importFile($event)" />
+            <p class="error" x-show="identityError" x-text="identityError"></p>
+            <p class="mt-3 text-xs text-neutral-500">
+              The private key is kept in memory only and is lost on reload. Export it to keep it, with a passphrase if the file leaves this machine.
+            </p>
+          </section>
+
+          <nav class="flex gap-2">
+            <button class="btn" :class="tab === 'encrypt' && 'border-accent/60 text-neutral-100'" @click="tab = 'encrypt'">Encrypt</button>
+            <button class="btn" :class="tab === 'decrypt' && 'border-accent/60 text-neutral-100'" @click="tab = 'decrypt'">Decrypt</button>
+          </nav>
+
+          <section x-show="tab === 'encrypt'" class="flex flex-col gap-4">
+            <div>
+              <label class="label" for="recipient">Recipient public key</label>
+              <input id="recipient" class="field font-mono" x-model="recipient" @input="previewRecipient()" placeholder="base64"
+                autocomplete="off" spellcheck="false" data-gramm="false" />
+              <p class="mt-1 font-mono text-xs text-neutral-500" x-show="recipientFingerprint" x-text="recipientFingerprint"></p>
+            </div>
+            <div>
+              <label class="label" for="message">Message</label>
+              <textarea id="message" class="field h-40 resize-y" x-model="message" @input="ciphertext = ''"
+                autocomplete="off" spellcheck="false" data-gramm="false"></textarea>
+            </div>
+            <div class="flex items-center gap-3">
+              <button class="btn-primary" @click="encrypt()">Encrypt</button>
+              <span x-show="encryptError" class="text-sm text-red-400" x-text="encryptError"></span>
+            </div>
+            <div x-show="ciphertext">
+              <div class="flex items-center justify-between">
+                <span class="label">Encrypted note</span>
+                <button class="text-xs text-neutral-500 hover:text-neutral-200" @click="copy(ciphertext, 'ciphertext')"
+                  x-text="copyLabel('ciphertext')"></button>
+              </div>
+              <textarea id="output-ciphertext" aria-label="Encrypted note" class="field h-32 resize-y break-all font-mono text-xs"
+                readonly :value="ciphertext" autocomplete="off" spellcheck="false" data-gramm="false"></textarea>
+            </div>
+          </section>
+
+          <section x-show="tab === 'decrypt'" class="flex flex-col gap-4">
+            <div>
+              <label class="label" for="sender">Sender public key</label>
+              <input id="sender" class="field font-mono" x-model="sender" @input="previewSender()" placeholder="base64"
+                autocomplete="off" spellcheck="false" data-gramm="false" />
+              <p class="mt-1 font-mono text-xs text-neutral-500" x-show="senderFingerprint" x-text="senderFingerprint"></p>
+            </div>
+            <div>
+              <label class="label" for="payload">Encrypted note</label>
+              <textarea id="payload" class="field h-40 resize-y break-all font-mono text-xs" x-model="payload" @input="decrypted = false"
+                autocomplete="off" spellcheck="false" data-gramm="false"></textarea>
+            </div>
+            <div class="flex items-center gap-3">
+              <button class="btn-primary" @click="decrypt()">Decrypt</button>
+              <span x-show="decryptError" class="text-sm text-red-400" x-text="decryptError"></span>
+            </div>
+            <div x-show="decrypted">
+              <div class="flex items-center justify-between">
+                <span class="label">Message</span>
+                <button class="text-xs text-neutral-500 hover:text-neutral-200" @click="copy(plaintext, 'plaintext')"
+                  x-text="copyLabel('plaintext')"></button>
+              </div>
+              <textarea id="output-plaintext" aria-label="Decrypted message" class="field h-40 resize-y" readonly :value="plaintext"
+                autocomplete="off" spellcheck="false" data-gramm="false"></textarea>
+              <p class="mt-2 text-xs text-neutral-500">
+                Written by the holder of <span class="font-mono text-neutral-300" x-text="verifiedSender"></span>. Replays are not detected.
+              </p>
+            </div>
+          </section>
+        </div>
+      </template>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
