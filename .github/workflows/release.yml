@@ -1,0 +1,21 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun run build
+      - run: cp dist/index.html e2e-notes.html && sha256sum e2e-notes.html > SHA256SUMS
+      - run: gh release create "$GITHUB_REF_NAME" e2e-notes.html SHA256SUMS --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
