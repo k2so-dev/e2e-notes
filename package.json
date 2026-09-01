@@ -1,0 +1,22 @@
+{
+  "name": "e2e-notes",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@alpinejs/csp": "^3.17.1",
+    "mlkem-wasm": "0.0.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.2",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

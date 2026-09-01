@@ -1,0 +1,4 @@
+node_modules
+dist
+*.log
+e2e-identity.json
