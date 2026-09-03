@@ -20,7 +20,7 @@ Serve `dist/index.html` over https or from localhost. WebCrypto is unavailable o
 
 ## Offline
 
-**Save offline copy** downloads the untouched markup, which runs from `file://` with no server. Do not use the browser's own *Save page as*: it serialises the live DOM, leaving expanded markup next to emptied `<template x-if>` elements, and the reopened file throws `Cannot set properties of null` instead of starting.
+**Save offline copy** downloads the untouched markup, which runs from `file://` with no server. It never carries a note, even when saved from a note page. Do not use the browser's own *Save page as*: it serialises the live DOM, leaving expanded markup next to emptied `<template x-if>` elements, and the reopened file throws `Cannot set properties of null` instead of starting.
 
 ## Verify
 
@@ -30,13 +30,13 @@ Every tagged release ships `e2e-notes.html` and its `SHA256SUMS`. The build is r
 curl -sL https://example.com/ | sha256sum
 ```
 
-The offline copy is re-serialised by the browser and hashes differently, even though it is the same code.
+The offline copy and note pages are re-serialised by the browser and hash differently, even though they are the same code.
 
 ## Flow
 
 1. Generate a key pair and share the public key. Compare fingerprints over a trusted channel.
-2. **Encrypt**: paste the recipient public key, write the note, copy the result.
-3. **Decrypt**: paste the sender public key and the encrypted note.
+2. **Encrypt**: paste the recipient public key, write the note, copy the result or **Save as page** to download it as `e2e-note.html`.
+3. **Decrypt**: paste the sender public key and the encrypted note. A note page opens with both filled in: import your identity and decrypt.
 
 Export writes the private keys to `e2e-identity.json`. With a passphrase set, the file is encrypted with PBKDF2-SHA256 (600k iterations) and AES-256-GCM; without one, the keys are written in the clear.
 
@@ -59,6 +59,8 @@ payload    = base64(header | ciphertext)
 
 The recipient decapsulates `ct` and derives the same key from `ECDH(recipientPrivate, epkPublic)` and `ECDH(recipientPrivate, senderPublic)`. Padding hides the note length up to 256-byte blocks.
 
+A note page is the app with `{ "v": 1, "from": senderPublic, "note": payload }` in its `<script type="application/json" id="envelope">` slot. The slot is not executed, so the script hash in the CSP is unchanged.
+
 Public keys are raw 1216 bytes in base64; the fingerprint is the first 16 bytes of their SHA-256. Non-canonical X25519 encodings are rejected, ML-KEM keys are validated on encapsulation. Payloads must be canonical base64. Identity files are trusted for the private material only: both public keys are re-derived on import. Notes and identities from earlier versions are not readable.
 
 ML-KEM comes from [mlkem-wasm](https://github.com/dchest/mlkem-wasm), a WebAssembly build of mlkem-native; everything else is WebCrypto.
@@ -71,5 +73,6 @@ ML-KEM comes from [mlkem-wasm](https://github.com/dchest/mlkem-wasm), a WebAssem
 - Authentication is classical. A quantum adversary could forge new notes, but cannot read captured ones.
 - The sender cannot read a note back after sending it: the ephemeral key is discarded.
 - Replay is not prevented. A captured note stays decryptable and can be resent.
+- A note page is code from the sender. Importing an identity into it trusts that file; a tampered page can steal the key. When in doubt, paste the note into a verified copy of the app instead. The page carries the sender public key in the clear.
 - The inline CSP allows only the bundled script by SHA-256 hash and `wasm-unsafe-eval` for ML-KEM; `connect-src 'none'` blocks exfiltration. `frame-ancestors` cannot be set from a meta tag, so framing is refused in script instead.
 - Requires X25519 in WebCrypto: Chrome 133+, Firefox 132+, Safari 17.4+.
