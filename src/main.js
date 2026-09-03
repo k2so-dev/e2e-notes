@@ -11,8 +11,10 @@ import {
   decrypt as decryptNote,
   fingerprint
 } from './crypto.js'
+import { seal, parse } from './envelope.js'
 
-const SOURCE = `<!doctype html>\n${document.documentElement.outerHTML}`
+const ENVELOPE = document.getElementById('envelope').textContent
+const SOURCE = seal(`<!doctype html>\n${document.documentElement.outerHTML}`, null)
 
 const MESSAGES = {
   framed: 'This page must not be embedded in a frame.',
@@ -25,6 +27,7 @@ Alpine.data('app', () => ({
   state: 'checking',
   identity: null,
   tab: 'encrypt',
+  envelope: false,
   passphrase: '',
   recipient: '',
   recipientFingerprint: '',
@@ -47,6 +50,24 @@ Alpine.data('app', () => ({
   async init() {
     const env = environment()
     this.state = env === 'ok' ? ((await isSupported()) ? 'ok' : 'unsupported') : env
+    if (this.ready) this.openEnvelope()
+  },
+
+  openEnvelope() {
+    let envelope
+    try {
+      envelope = parse(ENVELOPE)
+    } catch (error) {
+      this.tab = 'decrypt'
+      this.decryptError = error.message
+      return
+    }
+    if (!envelope) return
+    this.tab = 'decrypt'
+    this.envelope = true
+    this.sender = envelope.from
+    this.payload = envelope.note
+    this.previewSender()
   },
 
   get ready() {
@@ -101,6 +122,12 @@ Alpine.data('app', () => ({
 
   saveOffline() {
     download(SOURCE, 'e2e-notes.html', 'text/html')
+  },
+
+  savePage() {
+    if (!this.identity || !this.ciphertext) return
+    const page = seal(SOURCE, { v: 1, from: this.identity.publicKeyBase64, note: this.ciphertext })
+    download(page, 'e2e-note.html', 'text/html')
   },
 
   async importFile(event) {
